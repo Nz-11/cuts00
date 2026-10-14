@@ -1,36 +1,49 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Cezario's Clips AI
 
-## Getting Started
+Estúdio para transformar vídeos longos em cortes verticais (9:16) com IA, priorizando processamento local e custo zero.
 
-First, run the development server:
+> **Status:** v0.3. Funcionam de verdade:
+> - cadastro de projetos (YouTube ou arquivo);
+> - upload validado com ffprobe;
+> - persistência local em `.data/`;
+> - **transcrição local com faster-whisper** (worker Python).
+>
+> A seleção por IA e a renderização ainda **não** existem. Os exemplos em `/demo` são fictícios.
+
+## Como rodar
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npm run dev        # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Outros comandos:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm test           # testes (node --test)
+npm run lint       # ESLint
+npm run typecheck  # verificação de tipos
+npm run check      # os três acima
+npm run build      # build de produção
+npm run start      # servir o build
+npm run test:worker # testes do worker Python
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Transcrição (worker local)
 
-## Learn More
+```bat
+workersetup.cmd                  :: uma vez: ambiente Python + faster-whisper
+workerstart.cmd download-model   :: uma vez: modelo Whisper (~480 MB)
+workerstart.cmd                  :: com o npm run dev aberto em outro terminal
+```
 
-To learn more about Next.js, take a look at the following resources:
+Requer Python 3.11+, FFmpeg e `CCA_WORKER_TOKEN` no `.env.local`. Veja [worker/README.md](worker/README.md).
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Configuração opcional
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Copie `.env.example` para `.env.local`. Nada é obrigatório: sem chaves, a interface funciona com armazenamento local.
 
-## Deploy on Vercel
+## Documentação
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): estrutura, roadmap e regras do projeto
+- [worker/README.md](worker/README.md): worker de transcrição (instalação, configuração, uso e diagnóstico no Windows)

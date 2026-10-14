@@ -6,9 +6,15 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test \"tests/**/*.test.ts\"",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run lint && npm run typecheck && npm test",
+    "test:worker": "cd worker && \"./.venv/Scripts/python.exe\" -m unittest discover -s tests -t .",
+    "worker": "worker\\start.cmd"
   },
   "dependencies": {
+    "lucide-react": "^1.57.0",
     "next": "16.4.0",
     "react": "19.3.0",
     "react-dom": "19.3.0"
