@@ -1,0 +1,206 @@
+{
+ "version": 1,
+ "language": "pt",
+ "durationSec": 196.41,
+ "segments": [
+  {
+   "id": 0,
+   "startSec": 0.0,
+   "endSec": 4.2,
+   "text": "Fala, pessoal, sejam bem-vindos a mais um episódio do podcast."
+  },
+  {
+   "id": 1,
+   "startSec": 4.55,
+   "endSec": 11.27,
+   "text": "Hoje o papo é sobre dinheiro, carreira e os erros que a gente comete no começo."
+  },
+  {
+   "id": 2,
+   "startSec": 11.62,
+   "endSec": 17.5,
+   "text": "Antes de começar, deixa o like e se inscreve no canal, isso ajuda muito."
+  },
+  {
+   "id": 3,
+   "startSec": 17.85,
+   "endSec": 22.89,
+   "text": "Bom, eu vou começar contando uma história que eu nunca contei aqui."
+  },
+  {
+   "id": 4,
+   "startSec": 23.24,
+   "endSec": 29.96,
+   "text": "Em 2019 eu perdi praticamente todo o dinheiro que eu tinha guardado em uma única semana."
+  },
+  {
+   "id": 5,
+   "startSec": 30.31,
+   "endSec": 37.45,
+   "text": "Eu tinha juntado uns trinta mil reais durante quatro anos trabalhando de dia e estudando à noite."
+  },
+  {
+   "id": 6,
+   "startSec": 37.8,
+   "endSec": 44.1,
+   "text": "Aí um amigo me apresentou um investimento que prometia dobrar o dinheiro em seis meses."
+  },
+  {
+   "id": 7,
+   "startSec": 44.45,
+   "endSec": 48.23,
+   "text": "E eu, sem pesquisar nada, coloquei tudo lá dentro."
+  },
+  {
+   "id": 8,
+   "startSec": 48.58,
+   "endSec": 55.3,
+   "text": "Na sexta-feira o site saiu do ar, o telefone do cara parou de atender e acabou."
+  },
+  {
+   "id": 9,
+   "startSec": 55.65,
+   "endSec": 63.21,
+   "text": "Eu lembro de sentar no chão do quarto e pensar: como eu vou contar isso pra minha mãe?"
+  },
+  {
+   "id": 10,
+   "startSec": 63.56,
+   "endSec": 70.7,
+   "text": "E a lição que ficou foi muito simples: se alguém promete retorno garantido e alto, é golpe."
+  },
+  {
+   "id": 11,
+   "startSec": 71.05,
+   "endSec": 76.51,
+   "text": "Não existe investimento sério que garante dobrar o seu dinheiro em seis meses."
+  },
+  {
+   "id": 12,
+   "startSec": 76.86,
+   "endSec": 81.9,
+   "text": "Mudando de assunto, vamos falar de organização financeira no dia a dia."
+  },
+  {
+   "id": 13,
+   "startSec": 82.25,
+   "endSec": 89.39,
+   "text": "Tem uma regra que mudou a minha vida, que é separar o dinheiro assim que ele entra."
+  },
+  {
+   "id": 14,
+   "startSec": 89.74,
+   "endSec": 97.72,
+   "text": "No dia do pagamento, antes de gastar qualquer coisa, eu já transfiro vinte por cento para uma conta separada."
+  },
+  {
+   "id": 15,
+   "startSec": 98.07,
+   "endSec": 103.95,
+   "text": "Essa conta eu não uso pra nada, ela é a minha reserva de emergência."
+  },
+  {
+   "id": 16,
+   "startSec": 104.3,
+   "endSec": 110.18,
+   "text": "Muita gente faz o contrário: gasta o mês inteiro e guarda o que sobrar."
+  },
+  {
+   "id": 17,
+   "startSec": 110.53,
+   "endSec": 114.31,
+   "text": "Só que nunca sobra, né? Sempre aparece alguma coisa."
+  },
+  {
+   "id": 18,
+   "startSec": 114.66,
+   "endSec": 118.86,
+   "text": "Então a dica é: pague você primeiro, depois as contas."
+  },
+  {
+   "id": 19,
+   "startSec": 119.21,
+   "endSec": 126.77,
+   "text": "Em um ano fazendo isso, eu tinha seis meses de salário guardados, coisa que eu nunca tinha conseguido."
+  },
+  {
+   "id": 20,
+   "startSec": 127.12,
+   "endSec": 130.48,
+   "text": "Agora uma coisa engraçada que aconteceu essa semana."
+  },
+  {
+   "id": 21,
+   "startSec": 130.83,
+   "endSec": 136.71,
+   "text": "Eu fui comprar um café na padaria e a moça me cobrou cinquenta reais."
+  },
+  {
+   "id": 22,
+   "startSec": 137.06,
+   "endSec": 142.1,
+   "text": "Eu falei: moça, é um café, não é uma ação da bolsa."
+  },
+  {
+   "id": 23,
+   "startSec": 142.45,
+   "endSec": 147.91,
+   "text": "Ela riu e disse que tinha digitado o número errado, era cinco reais."
+  },
+  {
+   "id": 24,
+   "startSec": 148.26,
+   "endSec": 153.72,
+   "text": "Mas por um segundo eu achei que a inflação tinha ido longe demais."
+  },
+  {
+   "id": 25,
+   "startSec": 154.07,
+   "endSec": 159.53,
+   "text": "Voltando ao assunto sério, muita gente me pergunta por onde começar a investir."
+  },
+  {
+   "id": 26,
+   "startSec": 159.88,
+   "endSec": 166.18,
+   "text": "A primeira coisa é ter a reserva de emergência, que a gente acabou de falar."
+  },
+  {
+   "id": 27,
+   "startSec": 166.53,
+   "endSec": 170.31,
+   "text": "Depois disso, estude o básico: tesouro direto, CDB, fundos."
+  },
+  {
+   "id": 28,
+   "startSec": 170.66,
+   "endSec": 177.8,
+   "text": "Não comece por criptomoeda ou day trade, isso é para quem já tem experiência e dinheiro sobrando."
+  },
+  {
+   "id": 29,
+   "startSec": 178.15,
+   "endSec": 183.61,
+   "text": "E principalmente, desconfie de quem fica ostentando carro e mansão para vender curso."
+  },
+  {
+   "id": 30,
+   "startSec": 183.96,
+   "endSec": 187.74,
+   "text": "Bom, pessoal, chegamos ao final do episódio de hoje."
+  },
+  {
+   "id": 31,
+   "startSec": 188.09,
+   "endSec": 192.71,
+   "text": "Se você gostou, compartilha com aquele amigo que vive no vermelho."
+  },
+  {
+   "id": 32,
+   "startSec": 193.06,
+   "endSec": 196.06,
+   "text": "Um abraço e até a próxima."
+  }
+ ],
+ "note": "Transcrição fictícia escrita para testes (não é de nenhum vídeo real)."
+}

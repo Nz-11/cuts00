@@ -10,7 +10,7 @@ import { PIPELINE_STAGES } from "@/lib/pipeline";
 import { PROCESSING_STATUSES, STATUS_LABEL } from "@/lib/project-status";
 import type { Project } from "@/lib/types";
 import { PipelineProgress } from "./pipeline-progress";
-import { AutoRefresh, DeleteProjectButton, RemoveMediaButton, RetryTranscriptionButton, UploadPanel } from "./project-controls";
+import { AutoRefresh, DeleteProjectButton, RemoveMediaButton, RetrySelectionButton, RetryTranscriptionButton, UploadPanel } from "./project-controls";
 import { ProjectThumb } from "./project-thumb";
 
 const timeFormat = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" });
@@ -46,7 +46,7 @@ export function ProjectStatusView({ project, demo = false }: { project: Project;
                 Revisar {project.clips.length} cortes
               </ButtonLink>
             )}
-            {!demo && <DeleteProjectButton projectId={project.id} />}
+            {!demo && <DeleteProjectButton project={project} />}
           </>
         }
       />
@@ -73,14 +73,14 @@ export function ProjectStatusView({ project, demo = false }: { project: Project;
             O arquivo foi recebido e validado. A transcrição começa quando o worker local estiver rodando (<code className="rounded bg-white/[0.06] px-1 py-0.5 font-mono text-ink-200">workerstart.cmd</code>). Se ele estiver desligado, o projeto continua na fila. Esta página se atualiza sozinha.
           </p>
           <div className="mt-3">
-            <RemoveMediaButton projectId={project.id} />
+            <RemoveMediaButton projectId={project.id} fileName={project.media?.originalName} />
           </div>
         </Notice>
       )}
 
       {!demo && queued && project.status === "selecting" && (
-        <Notice title="Transcrição pronta — seleção de cortes ainda não disponível" icon={<Info className="size-4" />}>
-          A transcrição com timestamps foi salva na pasta de dados do projeto. A seleção de cortes por IA é a próxima etapa do desenvolvimento; até lá, o projeto aguarda nesta fase.
+        <Notice title="Na fila de seleção de cortes — aguardando o worker local" icon={<Info className="size-4" />}>
+          A transcrição está pronta. O worker local escolhe os trechos com o modelo do Ollama, sem enviar nada para fora deste computador. Se o worker ou o Ollama estiverem desligados, o projeto continua na fila. Esta página se atualiza sozinha.
         </Notice>
       )}
 
@@ -93,7 +93,14 @@ export function ProjectStatusView({ project, demo = false }: { project: Project;
               !demo ? (
                 <div className="flex flex-wrap justify-center gap-2">
                   {project.error?.stage === "transcribe" && media && <RetryTranscriptionButton projectId={project.id} />}
-                  <RemoveMediaButton projectId={project.id} label="Recomeçar com outro arquivo" />
+                  {project.error?.stage === "select" && media && <RetrySelectionButton projectId={project.id} />}
+                  {project.error?.stage === "render" ? (
+                    <ButtonLink href={`${base}/${project.id}/review#renderizar`} size="sm">
+                      Ver renderização e tentar de novo
+                    </ButtonLink>
+                  ) : (
+                    <RemoveMediaButton projectId={project.id} fileName={project.media?.originalName} label="Recomeçar com outro arquivo" />
+                  )}
                 </div>
               ) : undefined
             }

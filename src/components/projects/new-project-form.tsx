@@ -248,7 +248,7 @@ export function NewProjectForm() {
           </Notice>
         ) : (
           <Notice title="O que acontece depois do envio">
-            O vídeo é validado com o ffprobe (duração, vídeo e áudio) e entra na fila de <strong className="text-white">transcrição</strong>. A transcrição roda no worker local (faster-whisper) quando ele estiver ligado; enquanto isso, o projeto aguarda na fila.
+            O vídeo é validado com o ffprobe (duração, vídeo e áudio) e entra na fila de <strong className="text-white">transcrição</strong>. O worker local transcreve (faster-whisper) e sugere os cortes (Ollama) quando estiver ligado; enquanto isso, o projeto aguarda na fila.
           </Notice>
         )}
       </div>

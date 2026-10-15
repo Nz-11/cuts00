@@ -1,12 +1,13 @@
 import { randomUUID } from "node:crypto";
-import { createWriteStream } from "node:fs";
-import { mkdir, rename, rm } from "node:fs/promises";
+import { createReadStream, createWriteStream } from "node:fs";
+import { mkdir, rename, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { ReadableStream as NodeWebStream } from "node:stream/web";
 import { formatBytes } from "@/lib/format";
 import { ACCEPTED_VIDEO_EXTENSIONS, MAX_UPLOAD_BYTES, probeMedia, ProbeUnavailableError, type ProbeResult } from "@/server/media";
+import { parseRange, videoContentType } from "@/server/http-range";
 import { getProject, projectMediaDir, resolveDataPath, StoreError, transitionProject } from "@/server/project-store";
 
 /**
@@ -111,6 +112,54 @@ export async function PUT(request: Request, ctx: RouteContext<"/api/projects/[id
     if (err instanceof StoreError) return json(err.code === "not_found" ? 404 : 409, err.message);
     throw err;
   }
+}
+
+/**
+ * Entrega o vídeo enviado para o player da revisão (somente leitura, com Range).
+ *
+ *   GET /api/projects/:id/media
+ *
+ * Só serve o arquivo registrado no próprio projeto, dentro de `.data/media/:id/`.
+ */
+export async function GET(request: Request, ctx: RouteContext<"/api/projects/[id]/media">) {
+  const { id } = await ctx.params;
+  const project = await getProject(id);
+  if (!project?.media) return json(404, "Este projeto não tem vídeo.");
+
+  let filePath: string;
+  try {
+    filePath = resolveDataPath(project.media.storedPath);
+  } catch {
+    return json(404, "Arquivo fora da pasta de dados.");
+  }
+  if (path.dirname(filePath) !== resolveDataPath(projectMediaDir(id))) return json(404, "Arquivo fora da pasta do projeto.");
+
+  let size: number;
+  try {
+    size = (await stat(filePath)).size;
+  } catch {
+    return json(404, "O arquivo enviado não está mais na pasta de dados.");
+  }
+
+  const headers = new Headers({
+    "Content-Type": videoContentType(filePath),
+    "Accept-Ranges": "bytes",
+    "Cache-Control": "private, no-store",
+    "X-Content-Type-Options": "nosniff",
+    "Content-Disposition": "inline",
+  });
+  const range = parseRange(request.headers.get("range"), size);
+  if (range === "invalid") {
+    headers.set("Content-Range", `bytes */${size}`);
+    return new Response(null, { status: 416, headers });
+  }
+  const { start, end } = range ?? { start: 0, end: size - 1 };
+  headers.set("Content-Length", String(end - start + 1));
+  if (range) headers.set("Content-Range", `bytes ${start}-${end}/${size}`);
+
+  const stream = createReadStream(filePath, { start, end });
+  request.signal.addEventListener("abort", () => stream.destroy());
+  return new Response(Readable.toWeb(stream) as unknown as ReadableStream, { status: range ? 206 : 200, headers });
 }
 
 function json(status: number, error: string) {

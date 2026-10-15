@@ -1,8 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { JobInfo, Project, ProjectStatus, StageId, YouTubeRef } from "../lib/types";
+import type { ClipRender, JobInfo, Project, ProjectStatus, StageId, YouTubeRef } from "../lib/types";
 import { canTransition, PROCESSING_STATUSES } from "../lib/project-status.ts";
+import { dataDir, projectMediaDir, resolveDataPath, StoreError } from "./data-paths.ts";
+import { dropTrashEntry, getTrashEntry, moveToTrash, restoreProjectFiles, type TrashEntry } from "./trash.ts";
+
+export { dataDir, projectMediaDir, resolveDataPath, StoreError };
+export type { StoreErrorCode } from "./data-paths.ts";
 
 /**
  * Persistência local do protótipo: um arquivo JSON na pasta de dados
@@ -20,33 +25,7 @@ interface Database {
   projects: Project[];
 }
 
-export type StoreErrorCode = "not_found" | "invalid_transition" | "corrupted";
-
-export class StoreError extends Error {
-  code: StoreErrorCode;
-  constructor(code: StoreErrorCode, message: string) {
-    super(message);
-    this.name = "StoreError";
-    this.code = code;
-  }
-}
-
-export function dataDir() {
-  return path.resolve(process.env.CCA_DATA_DIR || path.join(process.cwd(), ".data"));
-}
-
 const dbFile = () => path.join(dataDir(), "projects.json");
-
-/** Pasta dos arquivos de um projeto, relativa à pasta de dados. */
-export function projectMediaDir(id: string) {
-  return path.join("media", id);
-}
-
-export function resolveDataPath(relative: string) {
-  const full = path.resolve(dataDir(), relative);
-  if (!full.startsWith(dataDir() + path.sep)) throw new Error("Caminho fora da pasta de dados.");
-  return full;
-}
 
 async function readDb(): Promise<Database> {
   let raw: string;
@@ -199,10 +178,50 @@ export async function updateJob(id: string, job: Partial<Omit<JobInfo, "updatedA
   });
 }
 
-export async function deleteProject(id: string): Promise<void> {
-  await mutate((db) => {
-    find(db, id);
-    db.projects = db.projects.filter((p) => p.id !== id);
+/** Atualiza a renderização de um corte (usado pelo worker durante `rendering`). */
+export async function updateClipRender(id: string, clipId: string, patch: Partial<Omit<ClipRender, "requestedAt" | "framing" | "captions" | "startSec" | "endSec">>): Promise<Project> {
+  return mutate((db) => {
+    const project = find(db, id);
+    if (project.status !== "rendering") throw new StoreError("invalid_transition", `O projeto não está renderizando (status: ${project.status}).`);
+    const clip = project.clips.find((c) => c.id === clipId);
+    if (!clip?.render) throw new StoreError("not_found", "Corte sem renderização pedida.");
+    const now = new Date().toISOString();
+    clip.render = { ...clip.render, ...patch, updatedAt: now };
+    if (patch.state && patch.state !== "failed") delete clip.render.error;
+    project.updatedAt = now;
+    return structuredClone(project);
   });
-  await rm(resolveDataPath(projectMediaDir(id)), { recursive: true, force: true });
+}
+
+/**
+ * "Exclui" um projeto movendo-o, com todos os arquivos, para a lixeira (`trash.ts`).
+ * Se os arquivos não puderem ser movidos (em uso), nada muda.
+ */
+export async function deleteProject(id: string): Promise<TrashEntry> {
+  return mutate(async (db) => {
+    const project = find(db, id);
+    const entry = await moveToTrash({ kind: "project", projectId: id, title: project.title, project: structuredClone(project) }, resolveDataPath(projectMediaDir(id)));
+    db.projects = db.projects.filter((p) => p.id !== id);
+    return entry;
+  });
+}
+
+/** Devolve um projeto da lixeira, com os arquivos, exatamente como estava. */
+export async function restoreProject(entryId: string): Promise<Project> {
+  const project = await mutate(async (db) => {
+    const entry = await getTrashEntry(entryId);
+    if (!entry || entry.kind !== "project" || !entry.project) throw new StoreError("not_found", "Item da lixeira não encontrado.");
+    if (db.projects.some((p) => p.id === entry.projectId)) throw new StoreError("invalid_transition", "Já existe um projeto com este identificador; nada foi alterado.");
+    await restoreProjectFiles(entry);
+    const now = new Date().toISOString();
+    const restored: Project = structuredClone(entry.project);
+    restored.updatedAt = now;
+    restored.history = [...restored.history, { status: restored.status, at: now, note: "Restaurado da lixeira" }];
+    // Um trabalho interrompido pela exclusão volta para a fila do worker.
+    if (restored.job) restored.job = { ...restored.job, state: "queued", updatedAt: now };
+    db.projects.push(restored);
+    return structuredClone(restored);
+  });
+  await dropTrashEntry(entryId);
+  return project;
 }

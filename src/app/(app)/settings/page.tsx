@@ -4,6 +4,7 @@ import { Suspense } from "react";
 import { SettingsView } from "@/components/settings/settings-view";
 import { PageHeader, Skeleton } from "@/components/ui/states";
 import { isFfprobeAvailable } from "@/server/media";
+import { isOllamaRunning } from "@/server/ollama-status";
 import { dataDir } from "@/server/project-store";
 
 export const metadata: Metadata = { title: "Configurações" };
@@ -27,6 +28,7 @@ async function SettingsLoader() {
     youtubeApi: Boolean(process.env.YOUTUBE_API_KEY),
     workerApi: Boolean(process.env.CCA_WORKER_TOKEN),
     ffprobe: await isFfprobeAvailable(),
+    ollama: await isOllamaRunning(),
     dataDir: dataDir(),
   };
   return <SettingsView integrations={integrations} />;

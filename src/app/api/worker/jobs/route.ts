@@ -18,7 +18,8 @@ export async function GET(request: Request) {
       status: p.status,
       job: p.job,
       media: p.media ? { ...p.media, absolutePath: resolveDataPath(p.media.storedPath) } : null,
-      clips: p.status === "rendering" ? p.clips.filter((c) => c.decision === "approved") : undefined,
+      // Na renderização: só os cortes aprovados com renderização pedida.
+      clips: p.status === "rendering" ? p.clips.filter((c) => c.decision === "approved" && c.render) : undefined,
     }))
     .reverse(); // mais antigos primeiro
 

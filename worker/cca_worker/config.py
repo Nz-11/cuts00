@@ -12,6 +12,7 @@ O token nunca é impresso: `Settings.__repr__` o omite.
 from __future__ import annotations
 
 import os
+import urllib.parse
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -19,6 +20,9 @@ WORKER_DIR = Path(__file__).resolve().parent.parent
 APP_DIR = WORKER_DIR.parent
 
 DEFAULT_APP_URL = "http://localhost:3000"
+DEFAULT_OLLAMA_URL = "http://127.0.0.1:11434"
+LOOPBACK_HOSTS = ("localhost", "127.0.0.1", "::1")
+RENDER_PRESETS = ("ultrafast", "superfast", "veryfast", "faster", "fast", "medium")
 WHISPER_MODELS = ("tiny", "base", "small", "medium", "large-v3", "large-v3-turbo")
 
 
@@ -70,6 +74,13 @@ def _int(env: dict[str, str], key: str, default: int, minimum: int, maximum: int
     return value
 
 
+def _path(raw: str | None, default: Path) -> Path:
+    if not raw:
+        return default
+    path = Path(raw)
+    return (path if path.is_absolute() else WORKER_DIR / path).resolve()
+
+
 def default_cpu_threads() -> int:
     """Núcleos físicos aproximados: metade dos lógicos (Hyper-Threading), no mínimo 1."""
     return max(1, (os.cpu_count() or 2) // 2)
@@ -89,6 +100,20 @@ class Settings:
     beam_size: int
     models_dir: Path
     poll_seconds: int
+    # Seleção de cortes (Ollama local)
+    ollama_url: str = DEFAULT_OLLAMA_URL
+    select_model: str = "qwen2.5:7b"
+    select_num_ctx: int = 8192
+    clip_min_sec: int = 15
+    clip_max_sec: int = 90
+    max_clips: int = 10
+    window_sec: int = 480
+    window_overlap_sec: int = 60
+    # Renderização (FFmpeg local)
+    ffprobe: str = "ffprobe"
+    render_preset: str = "veryfast"
+    render_crf: int = 20
+    face_model: Path = WORKER_DIR / "models" / "yunet" / "face_detection_yunet_2026may.onnx"
     env_files: tuple[str, ...] = ()
 
     @property
@@ -131,6 +156,29 @@ def load_settings(app_dir: Path = APP_DIR, environ: dict[str, str] | None = None
     if device not in ("cpu", "cuda", "auto"):
         raise ValueError(f"CCA_WHISPER_DEVICE deve ser cpu, cuda ou auto (recebido: {device!r}).")
 
+    ollama_url = env.get("CCA_OLLAMA_URL", DEFAULT_OLLAMA_URL).rstrip("/")
+    parsed = urllib.parse.urlparse(ollama_url)
+    if parsed.scheme != "http" or (parsed.hostname or "") not in LOOPBACK_HOSTS:
+        # A transcrição nunca sai deste computador: só Ollama local é aceito.
+        raise ValueError(f"CCA_OLLAMA_URL precisa apontar para este computador (http://127.0.0.1:11434). Recebido: {ollama_url!r}.")
+
+    select_model = env.get("CCA_SELECT_MODEL", "qwen2.5:7b")
+    if not select_model or any(c.isspace() for c in select_model) or len(select_model) > 100:
+        raise ValueError(f"CCA_SELECT_MODEL inválido: {select_model!r}.")
+
+    clip_min = _int(env, "CCA_CLIP_MIN_SEC", 15, 5, 600)
+    clip_max = _int(env, "CCA_CLIP_MAX_SEC", 90, 10, 900)
+    if clip_max <= clip_min:
+        raise ValueError(f"CCA_CLIP_MAX_SEC ({clip_max}) deve ser maior que CCA_CLIP_MIN_SEC ({clip_min}).")
+    window = _int(env, "CCA_SELECT_WINDOW_SEC", 480, 120, 3600)
+    overlap = _int(env, "CCA_SELECT_OVERLAP_SEC", 60, 0, 600)
+    if overlap >= window or window < clip_max * 2:
+        raise ValueError("CCA_SELECT_WINDOW_SEC deve ser maior que a sobreposição e ter pelo menos o dobro de CCA_CLIP_MAX_SEC.")
+
+    render_preset = env.get("CCA_RENDER_PRESET", "veryfast")
+    if render_preset not in RENDER_PRESETS:
+        raise ValueError(f"CCA_RENDER_PRESET inválido: {render_preset!r}. Use um de: {', '.join(RENDER_PRESETS)}.")
+
     return Settings(
         app_url=app_url,
         token=env.get("CCA_WORKER_TOKEN"),
@@ -144,5 +192,17 @@ def load_settings(app_dir: Path = APP_DIR, environ: dict[str, str] | None = None
         beam_size=_int(env, "CCA_WHISPER_BEAM", 5, 1, 10),
         models_dir=models_dir.resolve(),
         poll_seconds=_int(env, "CCA_WORKER_POLL_SECONDS", 5, 1, 3600),
+        ollama_url=ollama_url,
+        select_model=select_model,
+        select_num_ctx=_int(env, "CCA_SELECT_NUM_CTX", 8192, 2048, 32768),
+        clip_min_sec=clip_min,
+        clip_max_sec=clip_max,
+        max_clips=_int(env, "CCA_SELECT_MAX_CLIPS", 10, 1, 50),
+        window_sec=window,
+        window_overlap_sec=overlap,
+        ffprobe=env.get("FFPROBE_PATH", "ffprobe"),
+        render_preset=render_preset,
+        render_crf=_int(env, "CCA_RENDER_CRF", 20, 14, 32),
+        face_model=_path(env.get("CCA_FACE_MODEL"), WORKER_DIR / "models" / "yunet" / "face_detection_yunet_2026may.onnx"),
         env_files=tuple(name for name in (".env", ".env.local") if (app_dir / name).is_file()),
     )

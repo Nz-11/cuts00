@@ -1,4 +1,6 @@
-"""Loop do worker: busca a fila, transcreve e reporta à aplicação.
+"""Loop do worker: busca a fila, transcreve (e, se ativa, seleciona cortes) e reporta.
+
+A seleção de cortes fica em selection.py; aqui está a transcrição e o loop.
 
 Garantias:
   - Só processa projetos em `transcribing` cujo arquivo está em
@@ -174,12 +176,25 @@ def completion_note(segments: int, words: int, model: str, language: str) -> str
 
 
 class JobRunner:
-    def __init__(self, settings: Settings, api: WorkerApi, transcriber: Transcriber):
+    def __init__(self, settings: Settings, api: WorkerApi, transcriber: Transcriber, selector: Any = None, renderer: Any = None):
         self.settings = settings
         self.api = api
         self.transcriber = transcriber
+        self.selector = selector  # SelectionStage, ou None para não selecionar
+        self.renderer = renderer  # RenderStage, ou None para não renderizar
 
     def process(self, job: dict[str, Any]) -> JobOutcome:
+        if job.get("status") == "rendering":
+            if self.renderer is None:
+                return JobOutcome(str(job.get("projectId") or "?"), "skipped", "renderização desativada")
+            return self.renderer.process(job)
+        if job.get("status") == "selecting":
+            if self.selector is None:
+                return JobOutcome(str(job.get("projectId") or "?"), "skipped", "seleção desativada")
+            return self.selector.process(job)
+        return self.process_transcription(job)
+
+    def process_transcription(self, job: dict[str, Any]) -> JobOutcome:
         project_id = str(job.get("projectId") or "?")
         try:
             source = resolve_source(self.settings, job)
@@ -300,13 +315,23 @@ class JobRunner:
 
 
 def pending_transcriptions(jobs: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Só transcrição. Seleção e renderização ficam para etapas futuras."""
     return [j for j in jobs if j.get("status") == "transcribing" and j.get("media")]
+
+
+def pending_jobs(jobs: list[dict[str, Any]], with_selection: bool, with_render: bool = False) -> list[dict[str, Any]]:
+    """Ordem: transcrições, seleções e renderizações."""
+    pending = pending_transcriptions(jobs)
+    if with_selection:
+        pending += [j for j in jobs if j.get("status") == "selecting" and j.get("media")]
+    if with_render:
+        pending += [j for j in jobs if j.get("status") == "rendering" and j.get("media")]
+    return pending
 
 
 def run_loop(runner: JobRunner, *, once: bool = False, sleep=time.sleep) -> list[JobOutcome]:
     outcomes: list[JobOutcome] = []
     offline_logged = False
+    selector_problem: str | None = None
     while True:
         try:
             jobs = runner.api.list_jobs()
@@ -332,7 +357,17 @@ def run_loop(runner: JobRunner, *, once: bool = False, sleep=time.sleep) -> list
             sleep(runner.settings.poll_seconds)
             continue
 
-        pending = pending_transcriptions(jobs)
+        with_selection = runner.selector is not None
+        if with_selection and any(j.get("status") == "selecting" for j in jobs):
+            problem = runner.selector.check_ready()
+            if problem != selector_problem:
+                if problem:
+                    log.warning("Seleção de cortes pausada: %s. Os projetos continuam na fila.", problem)
+                elif selector_problem:
+                    log.info("Ollama pronto; retomando a seleção de cortes.")
+                selector_problem = problem
+            with_selection = problem is None
+        pending = pending_jobs(jobs, with_selection, runner.renderer is not None)
         finished = 0
         for job in pending:
             try:

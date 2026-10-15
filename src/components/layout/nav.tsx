@@ -1,6 +1,6 @@
 "use client";
 
-import { LayoutDashboard, Plus, Settings } from "lucide-react";
+import { LayoutDashboard, Plus, Settings, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Suspense } from "react";
@@ -10,6 +10,7 @@ const NAV_ITEMS = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard, match: (p: string) => p === "/" || p.startsWith("/demo/") || (p.startsWith("/projects/") && p !== "/projects/new") },
   { href: "/projects/new", label: "Novo projeto", icon: Plus, match: (p: string) => p === "/projects/new" },
   { href: "/settings", label: "Configurações", icon: Settings, match: (p: string) => p.startsWith("/settings") },
+  { href: "/trash", label: "Lixeira", icon: Trash2, match: (p: string) => p.startsWith("/trash") },
 ];
 
 /** Links renderizados no shell estático; o estado ativo chega via Suspense. */

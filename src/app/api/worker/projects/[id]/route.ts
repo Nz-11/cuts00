@@ -1,6 +1,10 @@
+import { stat } from "node:fs/promises";
+import path from "node:path";
+import { parseWorkerClips } from "@/lib/clip-analysis";
 import { isProjectStatus } from "@/lib/project-status";
-import type { Clip, StageId } from "@/lib/types";
-import { StoreError, transitionProject, updateJob } from "@/server/project-store";
+import { RENDER_FILE_RE } from "@/lib/render";
+import type { Clip, ClipRender, StageId } from "@/lib/types";
+import { getProject, projectMediaDir, resolveDataPath, StoreError, transitionProject, updateClipRender, updateJob } from "@/server/project-store";
 import { checkWorkerAuth } from "@/server/worker-auth";
 
 /**
@@ -9,8 +13,11 @@ import { checkWorkerAuth } from "@/server/worker-auth";
  *
  *   { "action": "progress", "progress": 0.4, "message": "Transcrevendo…" }
  *   { "action": "transition", "to": "selecting", "note": "Transcrição concluída" }
- *   { "action": "transition", "to": "review", "clips": [...] }
+ *   { "action": "transition", "to": "review", "clips": [...] }   (cada corte pode trazer `analysis`; ver clip-analysis.ts)
  *   { "action": "transition", "to": "failed", "error": { "stage": "transcribe", "message": "…" } }
+ *   { "action": "clip", "clipId": "c1", "state": "running", "progress": 0.3 }
+ *   { "action": "clip", "clipId": "c1", "state": "done", "file": "renders/c1-1a2b3c4d.mp4", "sizeBytes": 123, "durationSec": 41.2, "framingNote": "…" }
+ *   { "action": "clip", "clipId": "c1", "state": "failed", "error": "…" }
  *
  * Transições inválidas são recusadas pela máquina de estados (409).
  */
@@ -40,11 +47,24 @@ export async function POST(request: Request, ctx: RouteContext<"/api/worker/proj
       return Response.json({ ok: true, project });
     }
 
+    if (body.action === "clip") {
+      const patch = await parseClipRender(id, body);
+      if (typeof patch === "string") return bad(patch);
+      const project = await updateClipRender(id, body.clipId as string, patch);
+      return Response.json({ ok: true, project });
+    }
+
     if (body.action === "transition") {
       if (!isProjectStatus(body.to)) return bad("`to` não é um status válido.");
+      if (body.to === "completed") {
+        const current = await getProject(id);
+        if (current && !current.clips.some((c) => c.render?.state === "done")) {
+          return Response.json({ ok: false, error: "Nenhum corte foi renderizado com sucesso." }, { status: 409 });
+        }
+      }
       let clips: Clip[] | undefined;
       if (body.to === "review") {
-        clips = parseClips(body.clips);
+        clips = parseWorkerClips(body.clips);
         if (!clips) return bad("`clips` inválido: envie uma lista com id, title, startSec, endSec, score, reason, hook, transcript e tags.");
       }
       let error: { stage: StageId; message: string } | undefined;
@@ -61,7 +81,7 @@ export async function POST(request: Request, ctx: RouteContext<"/api/worker/proj
       return Response.json({ ok: true, project });
     }
 
-    return bad("`action` deve ser `progress` ou `transition`.");
+    return bad("`action` deve ser `progress`, `transition` ou `clip`.");
   } catch (err) {
     if (err instanceof StoreError) {
       return Response.json({ ok: false, error: err.message }, { status: err.code === "not_found" ? 404 : 409 });
@@ -70,28 +90,38 @@ export async function POST(request: Request, ctx: RouteContext<"/api/worker/proj
   }
 }
 
-function parseClips(value: unknown): Clip[] | undefined {
-  if (!Array.isArray(value) || value.length === 0 || value.length > 100) return undefined;
-  const clips: Clip[] = [];
-  for (const raw of value as Record<string, unknown>[]) {
-    const { id, title, startSec, endSec, score, reason, hook, transcript, tags } = raw ?? {};
-    const valid =
-      typeof id === "string" &&
-      typeof title === "string" &&
-      typeof startSec === "number" &&
-      typeof endSec === "number" &&
-      endSec > startSec &&
-      startSec >= 0 &&
-      typeof score === "number" &&
-      typeof reason === "string" &&
-      typeof hook === "string" &&
-      typeof transcript === "string" &&
-      Array.isArray(tags) &&
-      tags.every((t) => typeof t === "string");
-    if (!valid) return undefined;
-    clips.push({ id, title, startSec, endSec, score: Math.max(0, Math.min(100, score)), reason, hook, transcript, tags: tags as string[], decision: "pending" });
+/** Valida o relatório de renderização de um corte. Retorna a mensagem de erro, ou o patch. */
+async function parseClipRender(projectId: string, body: Record<string, unknown>): Promise<Partial<ClipRender> | string> {
+  if (typeof body.clipId !== "string" || !body.clipId) return "`clipId` obrigatório.";
+  const state = body.state;
+  if (state === "running") {
+    const progress = Number(body.progress ?? 0);
+    if (!Number.isFinite(progress) || progress < 0 || progress > 1) return "`progress` deve estar entre 0 e 1.";
+    return { state, progress };
   }
-  return clips;
+  if (state === "failed") {
+    if (typeof body.error !== "string" || !body.error.trim()) return "`error` obrigatório quando o corte falha.";
+    return { state, error: body.error.slice(0, 500) };
+  }
+  if (state === "done") {
+    const file = body.file;
+    if (typeof file !== "string" || !RENDER_FILE_RE.test(file)) return "`file` deve ser renders/<nome>.mp4.";
+    const sizeBytes = Number(body.sizeBytes);
+    const durationSec = Number(body.durationSec);
+    if (!Number.isFinite(sizeBytes) || sizeBytes <= 0 || !Number.isFinite(durationSec) || durationSec <= 0) return "`sizeBytes` e `durationSec` devem ser positivos.";
+    try {
+      const full = resolveDataPath(path.join(projectMediaDir(projectId), file));
+      const info = await stat(full);
+      if (!info.isFile() || info.size !== sizeBytes) return "O arquivo informado não confere com o que está no disco.";
+    } catch {
+      return "O arquivo informado não existe na pasta do projeto.";
+    }
+    const note = (value: unknown) => (typeof value === "string" ? value.trim().slice(0, 200) : "");
+    const framingNote = note(body.framingNote);
+    const qualityNote = note(body.qualityNote);
+    return { state, progress: 1, file, sizeBytes, durationSec, ...(framingNote ? { framingNote } : {}), ...(qualityNote ? { qualityNote } : {}) };
+  }
+  return "`state` deve ser running, done ou failed.";
 }
 
 function bad(error: string) {

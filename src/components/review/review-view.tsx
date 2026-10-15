@@ -1,16 +1,21 @@
 "use client";
 
-import { ArrowLeft, Check, Clapperboard, Download, Lightbulb, Quote, RotateCcw, ThumbsDown, ThumbsUp } from "lucide-react";
+import { ArrowLeft, Check, Clapperboard, Download, Film, Lightbulb, Quote, RotateCcw, Star, ThumbsDown, ThumbsUp } from "lucide-react";
 import Link from "next/link";
 import { useRef, useState } from "react";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { Badge, DemoBadge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { EmptyState, Notice, PageHeader } from "@/components/ui/states";
+import { CRITERIA_LABEL, recommendedIds, strengths } from "@/lib/clip-analysis";
 import { cn, formatDuration, formatTimecode } from "@/lib/format";
 import { useSettings } from "@/lib/store";
 import type { Clip, ClipDecision, Project } from "@/lib/types";
+import { RegenerateClipsButton } from "@/components/projects/project-controls";
 import { updateClipAction } from "@/server/actions";
+import { AnalysisNotes, CriteriaBreakdown } from "./clip-analysis-panel";
+import { ClipPlayer } from "./clip-player";
+import { RenderPanel } from "./render-panel";
 import { SourceTimeline } from "./source-timeline";
 import { TrimControl } from "./trim-control";
 import { VerticalPreview } from "./vertical-preview";
@@ -41,6 +46,7 @@ export function ReviewEditor({ project, demo = false }: { project: Project; demo
   const original = project.clips.find((c) => c.id === selected.id);
   const sourceDuration = project.media?.durationSec ?? Math.max(...clips.map((c) => c.endSec)) + 60;
   const base = demo ? "/demo" : "/projects";
+  const hasVideo = !demo && Boolean(project.media);
 
   function update(clipId: string, patch: Partial<Pick<Clip, "startSec" | "endSec" | "decision">>) {
     const next = clips.map((c) => (c.id === clipId ? { ...c, ...patch } : c));
@@ -64,6 +70,8 @@ export function ReviewEditor({ project, demo = false }: { project: Project; demo
   const lengthWarning =
     length < settings.clipMinSec ? `Mais curto que o mínimo configurado (${settings.clipMinSec}s).` : length > settings.clipMaxSec ? `Mais longo que o máximo configurado (${settings.clipMaxSec}s).` : null;
   const approved = clips.filter((c) => c.decision === "approved").length;
+  const recommended = recommendedIds(clips);
+  const selectedStrengths = selected.analysis ? strengths(selected.analysis) : [];
   const edited = original && (original.startSec !== selected.startSec || original.endSec !== selected.endSec);
 
   return (
@@ -80,16 +88,27 @@ export function ReviewEditor({ project, demo = false }: { project: Project; demo
           </>
         }
         title={project.title}
-        description={`${clips.length} cortes sugeridos · ${approved} aprovados`}
+        description={`${clips.length} cortes sugeridos · ${recommended.size} recomendados · ${approved} aprovados`}
         actions={
-          <Button disabled title="A exportação MP4 será habilitada com o motor FFmpeg" icon={<Download className="size-4" aria-hidden />}>
-            Exportar MP4 · em breve
-          </Button>
+          <div className="flex flex-wrap items-start gap-2">
+            {!demo && project.status === "review" && <RegenerateClipsButton projectId={project.id} />}
+            {demo ? (
+              <Button disabled title="Exemplo demonstrativo: não há vídeo para renderizar" icon={<Download className="size-4" aria-hidden />}>
+                Exportar MP4
+              </Button>
+            ) : (
+              <ButtonLink href="#renderizar" icon={<Film className="size-4" aria-hidden />}>
+                Renderizar aprovados
+              </ButtonLink>
+            )}
+          </div>
         }
       />
 
       {demo ? (
         <Notice tone="warning">Exemplo demonstrativo: as sugestões são fictícias e os ajustes feitos aqui não são salvos.</Notice>
+      ) : project.status === "rendering" ? (
+        <Notice title="Renderização em andamento">Os ajustes ficam bloqueados até o worker terminar. Acompanhe o progresso em “Renderização 9:16”, abaixo.</Notice>
       ) : (
         <SaveIndicator state={saveState} />
       )}
@@ -124,8 +143,11 @@ export function ReviewEditor({ project, demo = false }: { project: Project; demo
                       <ScorePill score={clip.score} />
                     </div>
                     <p className="mt-2 line-clamp-2 text-sm font-medium text-white">{clip.title}</p>
-                    <div className="mt-3 flex items-center justify-between text-xs text-ink-400">
-                      <span>{formatDuration(clip.endSec - clip.startSec)}</span>
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-ink-400">
+                      <span className="flex items-center gap-2">
+                        <span className="font-mono tabular-nums">{formatDuration(clip.endSec - clip.startSec)}</span>
+                        {recommended.has(clip.id) && <RecommendedBadge />}
+                      </span>
                       <DecisionBadge decision={clip.decision} />
                     </div>
                   </button>
@@ -137,18 +159,29 @@ export function ReviewEditor({ project, demo = false }: { project: Project; demo
 
         {/* Editor do corte selecionado */}
         <Card className="p-5 sm:p-6 lg:col-span-8">
-          <div key={selected.id} className="grid animate-fade-up gap-6 md:grid-cols-[220px_1fr]">
-            <VerticalPreview caption={settings.caption} text={selected.hook} className="mx-auto w-full max-w-[220px]" />
+          {hasVideo && (
+            <div className="mb-6">
+              <ClipPlayer src={`/api/projects/${project.id}/media`} startSec={selected.startSec} endSec={selected.endSec} />
+            </div>
+          )}
+          <div key={selected.id} className={cn("grid animate-fade-up gap-6", !hasVideo && "md:grid-cols-[220px_1fr]")}>
+            {!hasVideo && <VerticalPreview caption={settings.caption} text={selected.hook} className="mx-auto w-full max-w-[220px]" />}
 
             <div className="min-w-0 space-y-5">
               <div>
                 <div className="flex flex-wrap items-center gap-2">
                   <ScorePill score={selected.score} />
+                  {recommended.has(selected.id) && <RecommendedBadge />}
                   {selected.tags.map((t) => (
                     <Badge key={t}>{t}</Badge>
                   ))}
                 </div>
                 <h2 className="mt-3 font-display text-xl font-semibold tracking-tight text-white">{selected.title}</h2>
+                {selected.hook && (
+                  <p className="mt-1.5 text-sm text-ink-300">
+                    <span className="text-ink-400">Gancho:</span> “{selected.hook}”
+                  </p>
+                )}
               </div>
 
               <div className="rounded-xl border border-violet-glow/20 bg-violet-glow/[0.06] p-4">
@@ -156,7 +189,21 @@ export function ReviewEditor({ project, demo = false }: { project: Project; demo
                   <Lightbulb className="size-3.5" aria-hidden /> Por que este trecho
                 </p>
                 <p className="mt-1.5 text-sm leading-relaxed text-ink-100">{selected.reason}</p>
+                {selectedStrengths.length > 0 && (
+                  <p className="mt-2 text-xs text-ink-300">
+                    <span className="text-ink-400">Mais pesaram a favor:</span> {selectedStrengths.map((k) => `${CRITERIA_LABEL[k].title} (${selected.analysis!.criteria[k]}/5)`).join(", ")}
+                  </p>
+                )}
               </div>
+
+              {selected.analysis ? (
+                <>
+                  <CriteriaBreakdown analysis={selected.analysis} score={selected.score} />
+                  <AnalysisNotes analysis={selected.analysis} />
+                </>
+              ) : (
+                !demo && <p className="text-xs text-ink-400">Este corte foi sugerido antes da avaliação por critério. Use “Gerar novas sugestões” para ver as notas detalhadas.</p>
+              )}
 
               <div>
                 <div className="mb-2 flex items-center justify-between">
@@ -205,6 +252,8 @@ export function ReviewEditor({ project, demo = false }: { project: Project; demo
           </div>
         </Card>
       </div>
+
+      {!demo && <RenderPanel project={project} clips={clips} saving={saveState.kind === "saving"} />}
     </div>
   );
 }
@@ -212,6 +261,14 @@ export function ReviewEditor({ project, demo = false }: { project: Project; demo
 function ScorePill({ score }: { score: number }) {
   const tone = score >= 85 ? "from-emerald-400/25 text-emerald-200" : score >= 75 ? "from-cyan-glow/25 text-cyan-100" : "from-violet-glow/25 text-violet-100";
   return <span className={cn("rounded-full bg-gradient-to-r to-transparent px-2 py-0.5 font-mono text-[11px] font-semibold tabular-nums", tone)}>{score} pts</span>;
+}
+
+function RecommendedBadge() {
+  return (
+    <Badge tone="amber">
+      <Star className="size-3" aria-hidden /> Recomendado
+    </Badge>
+  );
 }
 
 function DecisionBadge({ decision }: { decision: ClipDecision }) {

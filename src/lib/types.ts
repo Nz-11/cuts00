@@ -79,7 +79,10 @@ export interface Clip {
   title: string;
   startSec: number;
   endSec: number;
-  /** 0–100: confiança da IA de que o trecho funciona como corte isolado. */
+  /**
+   * 0–100. Com `analysis`, é calculada pelos critérios (ver `clip-analysis.ts`);
+   * em cortes antigos, é a nota única dada pelo modelo.
+   */
   score: number;
   /** Justificativa gerada pela IA para a escolha do trecho. */
   reason: string;
@@ -87,6 +90,59 @@ export interface Clip {
   transcript: string;
   tags: string[];
   decision: ClipDecision;
+  /** Avaliação por critério (ausente em cortes gerados antes da v0.6). */
+  analysis?: ClipAnalysis;
+  /** Última renderização pedida para este corte (ausente = nunca renderizado). */
+  render?: ClipRender;
+}
+
+export type ClipCriterion = "hook" | "clarity" | "value" | "standalone" | "pacing";
+export type ClipCriteria = Record<ClipCriterion, number>;
+/** Como o corte começa ou termina: fim de frase, pausa longa ou meio de frase. */
+export type ClipBoundary = "sentence" | "pause" | "mid";
+
+export interface ClipAnalysis {
+  version: 1;
+  /** Notas de 1 a 5 dadas pelo modelo local (limitadas pelo worker em casos objetivos). */
+  criteria: ClipCriteria;
+  /** 0–100: semelhança com um corte mais bem avaliado (tempo ou vocabulário). */
+  redundancyPct: number;
+  boundaries: { start: ClipBoundary; end: ClipBoundary };
+  /** Ajustes automáticos feitos nas bordas e no gancho. */
+  adjustments: string[];
+  /** Pontos para conferir antes de publicar. */
+  warnings: string[];
+}
+
+/**
+ * Enquadramento vertical: recorte fixo no rosto principal (volta ao centro se não detectar com
+ * segurança), recorte central (preenche a tela) ou imagem inteira sobre fundo desfocado.
+ */
+export type RenderFraming = "face" | "crop" | "blur";
+/** Estilo das legendas queimadas no vídeo. */
+export type RenderCaptions = "classic" | "keywords" | "highlight" | "none";
+export type ClipRenderState = "queued" | "running" | "done" | "failed";
+
+export interface ClipRender {
+  state: ClipRenderState;
+  /** 0–1 */
+  progress: number;
+  framing: RenderFraming;
+  captions: RenderCaptions;
+  /** Intervalo usado na renderização (cópia feita no pedido). */
+  startSec: number;
+  endSec: number;
+  requestedAt: string;
+  updatedAt: string;
+  /** Arquivo gerado, relativo à pasta de mídia do projeto (ex.: "renders/c1-1a2b3c4d.mp4"). */
+  file?: string;
+  sizeBytes?: number;
+  durationSec?: number;
+  /** Como o enquadramento "face" foi decidido (rosto detectado, posição ou motivo do recorte central). */
+  framingNote?: string;
+  /** Resolução da fonte e ampliação aplicada (ex.: "Fonte 640×360: … ampliado 3,6× para 720×1280"). */
+  qualityNote?: string;
+  error?: string;
 }
 
 export type CaptionPosition = "top" | "middle" | "bottom";

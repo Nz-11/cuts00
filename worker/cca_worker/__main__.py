@@ -2,6 +2,7 @@
 
   python -m cca_worker                 inicia o worker (fica aguardando a fila)
   python -m cca_worker run --once      processa o que estiver na fila e sai
+  python -m cca_worker run --no-select só transcreve (não usa o Ollama)
   python -m cca_worker check           diagnóstico da instalação
   python -m cca_worker download-model  baixa o modelo Whisper configurado (uma vez)
 """
@@ -19,7 +20,10 @@ from . import __version__
 from .api import ApiDisabled, ApiError, AppUnreachable, Unauthorized, WorkerApi
 from .audio import ffmpeg_version
 from .config import WORKER_DIR, load_settings
+from .ollama import OllamaClient, OllamaError, OllamaUnavailable
 from .runner import FatalConfigError, JobRunner, SingleInstanceLock, clean_stale_workdirs, run_loop
+from .render import RenderStage
+from .selection import SelectionStage
 from .transcribe import ModelMissing, WhisperTranscriber, download_model, model_is_downloaded
 
 log = logging.getLogger("cca_worker")
@@ -65,7 +69,15 @@ def cmd_run(args: argparse.Namespace) -> int:
         log.error("%s", err)
         return 2
     api = WorkerApi(settings.app_url, settings.token)
-    runner = JobRunner(settings, api, transcriber)
+    selector = None
+    if not getattr(args, "no_select", False):
+        selector = SelectionStage(settings, api, OllamaClient(settings.ollama_url))
+        problem = selector.check_ready()
+        if problem:
+            log.warning("Seleção de cortes indisponível por enquanto: %s. A transcrição funciona normalmente.", problem)
+        else:
+            log.info("Seleção de cortes: Ollama em %s com o modelo %s.", settings.ollama_url, settings.select_model)
+    runner = JobRunner(settings, api, transcriber, selector, RenderStage(settings, api))
     try:
         with SingleInstanceLock(settings.data_dir / "worker.lock"):
             if removed := clean_stale_workdirs(settings):
@@ -75,7 +87,7 @@ def cmd_run(args: argparse.Namespace) -> int:
                 outcomes = run_loop(runner, once=True)
                 log.info("Fila processada: %s", ", ".join(f"{o.project_id}={o.result}" for o in outcomes) or "nada pendente")
             else:
-                log.info("Aguardando projetos na fila de transcrição (Ctrl+C para sair).")
+                log.info("Aguardando projetos na fila (Ctrl+C para sair).")
                 run_loop(runner)
     except FatalConfigError as err:
         log.error("%s", err)
@@ -143,6 +155,20 @@ def cmd_check(args: argparse.Namespace) -> int:
 
     line(model_is_downloaded(settings.model_path), f"Modelo '{settings.model}'", str(settings.model_path) if model_is_downloaded(settings.model_path) else "não baixado — rode: worker\\start.cmd download-model")
     line(None, "Transcrição", f"idioma {settings.language or 'auto'}, {settings.device}/{settings.compute_type}, {settings.cpu_threads} threads, beam {settings.beam_size}")
+    ollama = OllamaClient(settings.ollama_url)
+    try:
+        version = ollama.version()
+        line(True, "Ollama", f"{version} em {settings.ollama_url}")
+        has = ollama.has_model(settings.select_model)
+        line(has, f"Modelo de seleção '{settings.select_model}'", "instalado" if has else f"não instalado — rode: ollama pull {settings.select_model}")
+    except OllamaUnavailable:
+        line(False, "Ollama", f"sem resposta em {settings.ollama_url}. Abra o Ollama (menu Iniciar)")
+    except OllamaError as err:
+        line(False, "Ollama", str(err))
+    line(None, "Seleção", f"cortes de {settings.clip_min_sec}–{settings.clip_max_sec} s, até {settings.max_clips} por vídeo, partes de {settings.window_sec // 60} min, contexto {settings.select_num_ctx}")
+    line(None, "Renderização", f"1080×1920 H.264 (preset {settings.render_preset}, CRF {settings.render_crf}) + AAC")
+    has_face = settings.face_model.is_file()
+    line(True if has_face else None, "Detector de rosto (YuNet)", str(settings.face_model) if has_face else f"não encontrado em {settings.face_model}: o enquadramento “Rosto” usará o recorte central")
     line(settings.data_dir.is_dir(), "Pasta de dados", str(settings.data_dir))
     line(settings.token_defined, "CCA_WORKER_TOKEN", f"definido ({len(settings.token or '')} caracteres)" if settings.token_defined else "não definido em .env.local")
 
@@ -151,7 +177,9 @@ def cmd_check(args: argparse.Namespace) -> int:
         try:
             jobs = api.list_jobs()
             waiting = sum(1 for j in jobs if j.get("status") == "transcribing")
-            line(True, "API do worker", f"{settings.app_url} respondeu; {waiting} projeto(s) aguardando transcrição")
+            selecting = sum(1 for j in jobs if j.get("status") == "selecting")
+            rendering = sum(1 for j in jobs if j.get("status") == "rendering")
+            line(True, "API do worker", f"{settings.app_url} respondeu; {waiting} aguardando transcrição, {selecting} seleção, {rendering} renderização")
         except AppUnreachable:
             line(False, "API do worker", f"sem resposta em {settings.app_url}. Rode npm run dev")
         except ApiDisabled:
@@ -171,6 +199,7 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command")
     run = sub.add_parser("run", help="inicia o worker (padrão)")
     run.add_argument("--once", action="store_true", help="processa a fila atual e sai")
+    run.add_argument("--no-select", action="store_true", help="só transcreve, sem usar o Ollama")
     sub.add_parser("check", help="diagnóstico da instalação")
     sub.add_parser("download-model", help="baixa o modelo Whisper configurado")
     args = parser.parse_args(argv)
@@ -182,6 +211,7 @@ def main(argv: list[str] | None = None) -> int:
     setup_logging(args.verbose)
     if args.command is None:
         args.once = False
+        args.no_select = False
     try:
         return cmd_run(args)
     except ValueError as err:  # configuração inválida

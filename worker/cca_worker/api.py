@@ -91,12 +91,23 @@ class WorkerApi:
         body = {"action": "progress", "progress": round(min(1.0, max(0.0, progress)), 4), "message": message[:200]}
         return self._request("POST", self._project_path(project_id), body).get("project") or {}
 
-    def transition(self, project_id: str, to: str, *, note: str | None = None, error: dict[str, str] | None = None) -> dict[str, Any]:
+    def transition(
+        self, project_id: str, to: str, *, note: str | None = None, error: dict[str, str] | None = None, clips: list[dict[str, Any]] | None = None
+    ) -> dict[str, Any]:
         body: dict[str, Any] = {"action": "transition", "to": to}
+        if clips is not None:
+            body["clips"] = clips
         if note:
             body["note"] = note[:200]
         if error:
             body["error"] = {"stage": error["stage"], "message": error["message"][:500]}
+        return self._request("POST", self._project_path(project_id), body).get("project") or {}
+
+    def clip_render(self, project_id: str, clip_id: str, state: str, **fields: Any) -> dict[str, Any]:
+        """Estado da renderização de um corte: running (progress), done (file, sizeBytes, durationSec) ou failed (error)."""
+        body: dict[str, Any] = {"action": "clip", "clipId": clip_id, "state": state, **fields}
+        if "error" in body:
+            body["error"] = str(body["error"])[:500]
         return self._request("POST", self._project_path(project_id), body).get("project") or {}
 
     @staticmethod

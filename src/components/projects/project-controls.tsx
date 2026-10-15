@@ -1,13 +1,16 @@
 "use client";
 
-import { FileVideo, Loader2, RefreshCw, RotateCcw, Trash2, UploadCloud } from "lucide-react";
+import { FileVideo, Loader2, RefreshCw, RotateCcw, Sparkles, Trash2, UploadCloud } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Notice } from "@/components/ui/states";
 import { cn, formatBytes } from "@/lib/format";
+import type { Project } from "@/lib/types";
 import { uploadProjectMedia } from "@/lib/upload-client";
-import { deleteProjectAction, removeMediaAction, retryTranscriptionAction } from "@/server/actions";
+import { deleteProjectAction, regenerateClipsAction, removeMediaAction, retrySelectionAction, retryTranscriptionAction } from "@/server/actions";
 
 const ACCEPTED = ".mp4,.mov,.mkv,.webm,.m4v";
 
@@ -82,68 +85,83 @@ export function UploadPanel({ projectId, fromYouTube }: { projectId: string; fro
   );
 }
 
-export function DeleteProjectButton({ projectId }: { projectId: string }) {
+/**
+ * Excluir abre uma confirmação separada: é preciso digitar o nome do projeto.
+ * O projeto não é apagado: vai para a Lixeira, de onde pode ser restaurado.
+ */
+export function DeleteProjectButton({ project }: { project: Pick<Project, "id" | "title" | "media" | "clips"> }) {
   const router = useRouter();
-  const [confirming, setConfirming] = useState(false);
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  if (!confirming) {
-    return (
-      <Button variant="secondary" onClick={() => setConfirming(true)} icon={<Trash2 className="size-4" aria-hidden />}>
-        Excluir
-      </Button>
-    );
-  }
+  const [open, setOpen] = useState(false);
+  const renders = project.clips.filter((c) => c.render?.state === "done").length;
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      <Button
-        variant="danger"
-        disabled={pending}
-        onClick={async () => {
-          setPending(true);
-          const result = await deleteProjectAction(projectId);
-          if (!result.ok) {
-            setPending(false);
-            return setError(result.error);
-          }
-          router.push("/");
-        }}
-      >
-        {pending ? "Excluindo…" : "Excluir projeto e arquivo"}
+    <>
+      <Button variant="secondary" onClick={() => setOpen(true)} icon={<Trash2 className="size-4" aria-hidden />}>
+        Excluir
       </Button>
-      <Button variant="ghost" onClick={() => setConfirming(false)} disabled={pending}>
-        Cancelar
-      </Button>
-      {error && <p className="w-full text-xs text-rose-300">{error}</p>}
-    </div>
+      {open && (
+        <ConfirmDialog
+          title="Mover projeto para a lixeira?"
+          confirmLabel="Mover para a lixeira"
+          requireText={project.title}
+          onClose={() => setOpen(false)}
+          onConfirm={async () => {
+            const result = await deleteProjectAction(project.id, project.title);
+            if (!result.ok) return result.error;
+            router.push("/");
+            return null;
+          }}
+        >
+          <p>
+            O projeto <span className="font-semibold text-white">{project.title}</span> sai da lista
+            {project.media ? `, junto com o vídeo (${formatBytes(project.media.sizeBytes)}), a transcrição` : ""}
+            {renders ? ` e ${renders} corte${renders > 1 ? "s" : ""} renderizado${renders > 1 ? "s" : ""}` : ""}.
+          </p>
+          <p className="text-ink-300">
+            Nada é apagado agora: tudo fica na <Link href="/trash" className="text-cyan-soft underline-offset-2 hover:underline">Lixeira</Link>, de onde dá para restaurar. Os arquivos continuam ocupando espaço até você excluí-los definitivamente.
+          </p>
+        </ConfirmDialog>
+      )}
+    </>
   );
 }
 
-export function RemoveMediaButton({ projectId, label = "Trocar arquivo" }: { projectId: string; label?: string }) {
+/** Trocar o arquivo pede confirmação; o vídeo antigo vai para a Lixeira. */
+export function RemoveMediaButton({ projectId, fileName, label = "Trocar arquivo" }: { projectId: string; fileName?: string; label?: string }) {
   const router = useRouter();
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
   return (
-    <div>
-      <Button
-        variant="secondary"
-        size="sm"
-        disabled={pending}
-        icon={pending ? <Loader2 className="size-3.5 animate-spin" aria-hidden /> : <RefreshCw className="size-3.5" aria-hidden />}
-        onClick={async () => {
-          setPending(true);
-          const result = await removeMediaAction(projectId);
-          setPending(false);
-          if (!result.ok) return setError(result.error);
-          router.refresh();
-        }}
-      >
+    <>
+      <Button variant="secondary" size="sm" onClick={() => setOpen(true)} icon={<RefreshCw className="size-3.5" aria-hidden />}>
         {label}
       </Button>
-      {error && <p className="mt-2 text-xs text-rose-300">{error}</p>}
-    </div>
+      {open && (
+        <ConfirmDialog
+          title="Trocar o arquivo de vídeo?"
+          confirmLabel="Mover vídeo para a lixeira"
+          danger={false}
+          onClose={() => setOpen(false)}
+          onConfirm={async () => {
+            const result = await removeMediaAction(projectId);
+            if (!result.ok) return result.error;
+            setOpen(false);
+            router.refresh();
+            return null;
+          }}
+        >
+          <p>
+            {fileName ? (
+              <>
+                O vídeo <span className="font-semibold text-white">{fileName}</span>
+              </>
+            ) : (
+              "O vídeo atual"
+            )}{" "}
+            vai para a Lixeira e o projeto volta a aguardar um arquivo. A transcrição já feita fica guardada na pasta do projeto.
+          </p>
+        </ConfirmDialog>
+      )}
+    </>
   );
 }
 
@@ -169,6 +187,70 @@ export function RetryTranscriptionButton({ projectId }: { projectId: string }) {
         Tentar transcrever de novo
       </Button>
       {error && <p className="mt-2 text-xs text-rose-300">{error}</p>}
+    </div>
+  );
+}
+
+/** Recoloca na fila de seleção após uma falha, reaproveitando a transcrição. */
+export function RetrySelectionButton({ projectId }: { projectId: string }) {
+  const router = useRouter();
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <div>
+      <Button
+        size="sm"
+        disabled={pending}
+        icon={pending ? <Loader2 className="size-3.5 animate-spin" aria-hidden /> : <RotateCcw className="size-3.5" aria-hidden />}
+        onClick={async () => {
+          setPending(true);
+          const result = await retrySelectionAction(projectId);
+          setPending(false);
+          if (!result.ok) return setError(result.error);
+          router.refresh();
+        }}
+      >
+        Tentar selecionar de novo
+      </Button>
+      {error && <p className="mt-2 text-xs text-rose-300">{error}</p>}
+    </div>
+  );
+}
+
+/** Descarta as sugestões atuais e pede outra rodada ao worker (confirmação em dois cliques). */
+export function RegenerateClipsButton({ projectId, onDone }: { projectId: string; onDone?: () => void }) {
+  const router = useRouter();
+  const [armed, setArmed] = useState(false);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!armed) return;
+    const timer = setTimeout(() => setArmed(false), 5000);
+    return () => clearTimeout(timer);
+  }, [armed]);
+
+  return (
+    <div className="text-right">
+      <Button
+        variant={armed ? "danger" : "secondary"}
+        disabled={pending}
+        icon={pending ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <Sparkles className="size-4" aria-hidden />}
+        onClick={async () => {
+          if (!armed) return setArmed(true);
+          setPending(true);
+          const result = await regenerateClipsAction(projectId);
+          setPending(false);
+          setArmed(false);
+          if (!result.ok) return setError(result.error);
+          onDone?.();
+          router.refresh();
+        }}
+      >
+        {armed ? "Confirmar: descartar e gerar de novo" : "Gerar novas sugestões"}
+      </Button>
+      {armed && <p className="mt-1.5 text-xs text-amber-300">As sugestões e decisões atuais serão descartadas.</p>}
+      {error && <p className="mt-1.5 text-xs text-rose-300">{error}</p>}
     </div>
   );
 }

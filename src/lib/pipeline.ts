@@ -5,9 +5,9 @@ import type { CaptionStyle, StageId } from "./types";
  *
  *   1. ingest     – upload do arquivo autorizado + leitura de metadados (ffprobe) ✅
  *   2. transcribe – faster-whisper local gera segmentos com timestamps     ✅ (worker/)
- *   3. select     – IA seleciona trechos e justifica cada um                (worker)
+ *   3. select     – modelo local (Ollama) sugere e justifica os trechos   ✅ (worker/)
  *   4. review     – usuário aprova e ajusta início/fim na interface         ✅
- *   5. render     – FFmpeg corta, reenquadra para 9:16 e queima legendas    (worker)
+ *   5. render     – FFmpeg corta, reenquadra para 9:16 e queima legendas   ✅ (worker/)
  *
  * Links do YouTube servem apenas para identificação e metadados (oEmbed /
  * Data API oficiais); o vídeo nunca é baixado da plataforma.
@@ -41,8 +41,8 @@ export const PIPELINE_STAGES: PipelineStage[] = [
     id: "select",
     label: "Seleção de cortes",
     description: "Encontra ganchos, picos de emoção e trechos autossuficientes.",
-    engine: "Modelo de IA (a definir)",
-    available: false,
+    engine: "Ollama local (worker)",
+    available: true,
   },
   {
     id: "review",
@@ -55,8 +55,8 @@ export const PIPELINE_STAGES: PipelineStage[] = [
     id: "render",
     label: "Renderização 9:16",
     description: "Corte, reenquadramento vertical e legendas queimadas em MP4.",
-    engine: "FFmpeg",
-    available: false,
+    engine: "FFmpeg (worker local)",
+    available: true,
   },
 ];
 

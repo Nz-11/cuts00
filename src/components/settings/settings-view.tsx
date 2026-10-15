@@ -17,6 +17,7 @@ export interface IntegrationStatus {
   youtubeApi: boolean;
   workerApi: boolean;
   ffprobe: boolean;
+  ollama: boolean;
   dataDir: string;
 }
 
@@ -107,7 +108,8 @@ export function SettingsView({ integrations }: { integrations: IntegrationStatus
           <IntegrationRow icon={<Plug className="size-4" />} name="YouTube oEmbed" detail="Confirma título e canal — gratuito, sem chave" ok pendingLabel="" okLabel="Ativo" />
           <IntegrationRow icon={<Plug className="size-4" />} name="YouTube Data API" detail="Metadados detalhados (opcional, cota gratuita)" ok={integrations.youtubeApi} />
           <IntegrationRow icon={<HardDrive className="size-4" />} name="ffprobe (FFmpeg)" detail="Valida os vídeos enviados" ok={integrations.ffprobe} pendingLabel="Não encontrado" okLabel="Encontrado" />
-          <IntegrationRow icon={<HardDrive className="size-4" />} name="API do worker local" detail="Worker local de transcrição (faster-whisper + FFmpeg)" ok={integrations.workerApi} pendingLabel="Desligada" okLabel="Token definido" />
+          <IntegrationRow icon={<HardDrive className="size-4" />} name="API do worker local" detail="Worker local: transcrição (faster-whisper) e seleção de cortes" ok={integrations.workerApi} pendingLabel="Desligada" okLabel="Token definido" />
+          <IntegrationRow icon={<HardDrive className="size-4" />} name="Ollama (local)" detail="Modelo de IA que sugere os cortes — roda neste computador" ok={integrations.ollama} pendingLabel="Não está rodando" okLabel="Rodando" />
         </ul>
         <p className="px-5 pb-5 text-xs leading-relaxed text-ink-400 sm:px-6">
           Configure as chaves em <code className="rounded bg-white/[0.06] px-1 py-0.5 font-mono text-ink-200">.env.local</code> (veja <code className="rounded bg-white/[0.06] px-1 py-0.5 font-mono text-ink-200">.env.example</code>). Chaves secretas ficam apenas no servidor.
